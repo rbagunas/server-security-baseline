@@ -1,0 +1,61 @@
+---
+- name: Harden Ubuntu Server
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Update packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install required packages
+      apt:
+        name:
+          - ufw
+          - fail2ban
+          - unattended-upgrades
+        state: present
+
+    - name: Setup UFW
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    - name: Allow outgoing connections
+      ufw:
+        rule: allow
+        direction: outgoing
+
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Disable root SSH login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin no'
+      notify: Restart SSH
+
+    - name: Configure Fail2Ban jail
+      copy:
+        dest: /etc/fail2ban/jail.local
+        content: |
+          [sshd]
+          enabled = true
+          port = ssh
+          logpath = %(sshd_log)s
+          backend = systemd
+          maxretry = 3
+
+    - name: Enable unattended upgrades
+      command: dpkg-reconfigure --priority=low unattended-upgrades
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: ssh
+        state: restarted
